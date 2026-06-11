@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Lock Dashboard</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: sans-serif; background: #f5f5f5; color: #222; min-height: 100vh; }
+  .container { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; }
+  .badge { display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 6px 12px; font-size: 13px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; display: inline-block; }
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 1rem; }
+  .stat { background: #f9fafb; border-radius: 8px; padding: 1rem; }
+  .stat-label { font-size: 13px; color: #6b7280; margin-bottom: 6px; }
+  .stat-value { font-size: 22px; font-weight: 500; }
+  input { width: 100%; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px; margin-bottom: 12px; outline: none; }
+  input:focus { border-color: #6366f1; }
+  button { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 16px; font-size: 14px; cursor: pointer; }
+  button:hover { background: #f9fafb; }
+  .btn-full { width: 100%; }
+  .lock-display { display: flex; align-items: center; gap: 1rem; padding: 1.25rem; border: 1px solid #e5e7eb; border-radius: 8px; }
+  .lock-icon { font-size: 36px; color: #6b7280; }
+  .log-item { display: flex; align-items: center; gap: 10px; padding: 8px; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 8px; }
+  .err { font-size: 12px; color: #ef4444; margin-bottom: 12px; display: none; }
+  .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+  .title { font-size: 15px; font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <div>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:4px;">IIB20804 IoT Application Security</p>
+      <h1 style="font-size:22px;font-weight:500;">Smart Lock Dashboard</h1>
+    </div>
+    <div class="badge">
+      <span class="dot" id="conn-dot"></span>
+      <span id="conn-text">Connecting...</span>
+    </div>
+  </div>
+
+  <div id="login-panel" class="card" style="max-width:360px;margin:0 auto 1.5rem;">
+    <p style="font-size:15px;font-weight:500;margin-bottom:4px;">Admin login</p>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:1.5rem;">Enter credentials to access dashboard</p>
+    <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Username</label>
+    <input type="text" id="inp-user" placeholder="admin">
+    <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Password</label>
+    <input type="password" id="inp-pass" placeholder="••••••••">
+    <p class="err" id="login-err">Invalid credentials. Try admin / admin123</p>
+    <button class="btn-full" onclick="doLogin()">Login <i class="ti ti-arrow-right"></i></button>
+  </div>
+
+  <div id="main-panel" style="display:none;">
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Current status</div><div class="stat-value" id="stat-status">—</div></div>
+      <div class="stat"><div class="stat-label">Total events</div><div class="stat-value" id="stat-total">—</div></div>
+      <div class="stat"><div class="stat-label">Last updated</div><div class="stat-value" style="font-size:15px;" id="stat-time">—</div></div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <span class="title">Lock status</span>
+        <button onclick="fetchStatus()"><i class="ti ti-refresh"></i> Refresh</button>
+      </div>
+      <div class="lock-display">
+        <i class="ti ti-lock lock-icon" id="lock-icon"></i>
+        <div>
+          <p style="font-size:18px;font-weight:500;margin-bottom:4px;" id="lock-label">Unknown</p>
+          <p style="font-size:13px;color:#6b7280;" id="lock-sub">Waiting for data...</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <span class="title">Event log</span>
+        <button onclick="fetchLog()"><i class="ti ti-refresh"></i> Refresh</button>
+      </div>
+      <div id="log-list"><p style="font-size:13px;color:#6b7280;">Loading events...</p></div>
+    </div>
+
+    <div style="text-align:right;margin-top:1rem;">
+      <button onclick="doLogout()" style="color:#ef4444;"><i class="ti ti-logout"></i> Logout</button>
+    </div>
+  </div>
+
+</div>
+<script>
+const MOBIUS_IP = '172.20.10.6';
+const MOBIUS_PORT = 7579;
+const BASE = 'http://' + MOBIUS_IP + ':' + MOBIUS_PORT;
+const HEADERS = {
+  'X-M2M-Origin': 'SmartLockAE',
+  'X-M2M-RI': 'req-dashboard',
+  'X-M2M-RVI': '2a',
+  'Accept': 'application/json'
+};
+let loggedIn = false;
+
+function doLogin() {
+  const u = document.getElementById('inp-user').value;
+  const p = document.getElementById('inp-pass').value;
+  if (u === 'admin' && p === 'admin123') {
+    document.getElementById('login-panel').style.display = 'none';
+    document.getElementById('main-panel').style.display = 'block';
+    document.getElementById('login-err').style.display = 'none';
+    loggedIn = true;
+    fetchStatus();
+    fetchLog();
+    setInterval(function(){ if(loggedIn){ fetchStatus(); fetchLog(); } }, 5000);
+  } else {
+    document.getElementById('login-err').style.display = 'block';
+  }
+}
+
+function doLogout() {
+  document.getElementById('login-panel').style.display = 'block';
+  document.getElementById('main-panel').style.display = 'none';
+  loggedIn = false;
+}
+
+async function fetchStatus() {
+  try {
+    const r = await fetch(BASE + '/Mobius/SmartLock/latest', { headers: HEADERS });
+    if (r.ok) {
+      const d = await r.json();
+      const con = d['m2m:cin'] && d['m2m:cin'].con ? d['m2m:cin'].con : 'UNKNOWN';
+      const ct = d['m2m:cin'] && d['m2m:cin'].ct ? d['m2m:cin'].ct : '';
+      updateLockUI(con, ct);
+      setConnected(true);
+    } else { setConnected(false); }
+  } catch(e) { setConnected(false); }
+}
+
+async function fetchLog() {
+  try {
+    const r = await fetch(BASE + '/Mobius/SmartLock?rcn=4&lim=20', { headers: HEADERS });
+    if (r.ok) {
+      const d = await r.json();
+      const items = d['m2m:rsp'] && d['m2m:rsp']['m2m:cin'] ? d['m2m:rsp']['m2m:cin'] : [];
+      document.getElementById('stat-total').textContent = items.length;
+      const list = document.getElementById('log-list');
+      if (!items.length) { list.innerHTML = '<p style="font-size:13px;color:#6b7280;">No events yet.</p>'; return; }
+      list.innerHTML = [...items].reverse().map(function(item) {
+        const con = item.con || '—';
+        const time = formatTime(item.ct || '');
+        const color = con === 'UNLOCKED' ? '#16a34a' : (con === 'DENIED' || con === 'LOCKOUT') ? '#ef4444' : '#6b7280';
+        const icon = con === 'UNLOCKED' ? 'ti-lock-open' : con === 'DENIED' ? 'ti-x' : con === 'LOCKOUT' ? 'ti-alert-triangle' : 'ti-lock';
+        return '<div class="log-item"><i class="ti ' + icon + '" style="font-size:16px;color:' + color + ';"></i><span style="font-size:13px;font-weight:500;color:' + color + ';flex:1;">' + con + '</span><span style="font-size:12px;color:#6b7280;">' + time + '</span></div>';
+      }).join('');
+    }
+  } catch(e) {}
+}
+
+function updateLockUI(con, ct) {
+  document.getElementById('lock-label').textContent = con;
+  document.getElementById('lock-sub').textContent = ct ? 'Last event: ' + formatTime(ct) : 'No recent events';
+  document.getElementById('stat-time').textContent = ct ? formatTime(ct) : '—';
+  document.getElementById('stat-status').textContent = con;
+  const icon = document.getElementById('lock-icon');
+  const label = document.getElementById('lock-label');
+  if (con === 'UNLOCKED') {
+    icon.className = 'ti ti-lock-open lock-icon'; icon.style.color = '#16a34a'; label.style.color = '#16a34a';
+  } else if (con === 'DENIED' || con === 'LOCKOUT') {
+    icon.className = 'ti ti-lock lock-icon'; icon.style.color = '#ef4444'; label.style.color = '#ef4444';
+  } else {
+    icon.className = 'ti ti-lock lock-icon'; icon.style.color = '#6b7280'; label.style.color = '#222';
+  }
+}
+
+function setConnected(ok) {
+  document.getElementById('conn-dot').style.background = ok ? '#16a34a' : '#ef4444';
+  document.getElementById('conn-text').textContent = ok ? 'Connected' : 'Disconnected';
+  document.getElementById('conn-text').style.color = ok ? '#16a34a' : '#ef4444';
+}
+
+function formatTime(ct) {
+  if (!ct || ct.length < 15) return ct;
+  return ct.slice(6,8) + '/' + ct.slice(4,6) + '/' + ct.slice(0,4) + ' ' + ct.slice(9,11) + ':' + ct.slice(11,13) + ':' + ct.slice(13,15);
+}
+</script>
+</body>
+</html>
