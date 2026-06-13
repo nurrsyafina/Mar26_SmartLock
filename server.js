@@ -2,10 +2,18 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const path = require('path');
+const https = require('https');
+const fs = require('fs');
 
 const app = express();
 const PORT = 3000;
 const JWT_SECRET = 'smartlock-secret-key-2026';
+
+// SSL Certificate
+const sslOptions = {
+  key: fs.readFileSync(path.join(__dirname, 'key.pem')),
+  cert: fs.readFileSync(path.join(__dirname, 'cert.pem'))
+};
 
 // Credentials — stored server-side only
 const ADMIN_USER = 'admin';
@@ -78,6 +86,7 @@ app.get('/api/log', verifyToken, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`SmartLock server running at http://localhost:${PORT}`);
+// Start HTTPS server
+https.createServer(sslOptions, app).listen(PORT, () => {
+  console.log(`SmartLock HTTPS server running at https://localhost:${PORT}`);
 });
